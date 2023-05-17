@@ -36,34 +36,43 @@ async function run() {
     for (const workspace of config.workspaces) {
       const packages = await workspace.getPackages();
       allPackages.push(...packages);
+
+      if (core.getBooleanInput("clean-target")) {
+        try {
+          core.info(`... Cleaning workspace: ${workspace.root} target: ${workspace.target} ...`);
+          await cleanTargetDir(workspace.target, packages);
+        } catch (e) {
+          core.error(`${(e as any).stack}`);
+        }
+      }
+    }
+
+    if (core.getBooleanInput("clean-registry")) {
       try {
-        core.info(`... Cleaning ${workspace.target} ...`);
-        await cleanTargetDir(workspace.target, packages);
+        const crates = core.getInput("cache-all-crates").toLowerCase() || "false"
+        core.info(`... Cleaning cargo registry cache-all-crates: ${crates} ...`);
+        await cleanRegistry(allPackages, crates !== "true");
       } catch (e) {
         core.error(`${(e as any).stack}`);
       }
     }
 
-    try {
-      const crates = core.getInput("cache-all-crates").toLowerCase() || "false"
-      core.info(`... Cleaning cargo registry cache-all-crates: ${crates} ...`);
-      await cleanRegistry(allPackages, crates !== "true");
-    } catch (e) {
-      core.error(`${(e as any).stack}`);
+    if (core.getBooleanInput("clean-bin")) {
+      try {
+        core.info(`... Cleaning cargo/bin ...`);
+        await cleanBin(config.cargoBins);
+      } catch (e) {
+        core.error(`${(e as any).stack}`);
+      }
     }
 
-    try {
-      core.info(`... Cleaning cargo/bin ...`);
-      await cleanBin(config.cargoBins);
-    } catch (e) {
-      core.error(`${(e as any).stack}`);
-    }
-
-    try {
-      core.info(`... Cleaning cargo git cache ...`);
-      await cleanGit(allPackages);
-    } catch (e) {
-      core.error(`${(e as any).stack}`);
+    if (core.getBooleanInput("clean-git")) {
+      try {
+        core.info(`... Cleaning cargo git cache ...`);
+        await cleanGit(allPackages);
+      } catch (e) {
+        core.error(`${(e as any).stack}`);
+      }
     }
 
     core.info(`... Saving cache ...`);
