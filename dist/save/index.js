@@ -60487,27 +60487,33 @@ async function run() {
                 core.error(`${e.stack}`);
             }
         }
-        try {
-            const crates = core.getInput("cache-all-crates").toLowerCase() || "false";
-            core.info(`... Cleaning cargo registry cache-all-crates: ${crates} ...`);
-            await cleanRegistry(allPackages, crates !== "true");
+        if (core.getBooleanInput("clean-registry")) {
+            try {
+                const crates = core.getInput("cache-all-crates").toLowerCase() || "false";
+                core.info(`... Cleaning cargo registry cache-all-crates: ${crates} ...`);
+                await cleanRegistry(allPackages, crates !== "true");
+            }
+            catch (e) {
+                core.error(`${e.stack}`);
+            }
         }
-        catch (e) {
-            core.error(`${e.stack}`);
+        if (core.getBooleanInput("clean-bin")) {
+            try {
+                core.info(`... Cleaning cargo/bin ...`);
+                await cleanBin(config.cargoBins);
+            }
+            catch (e) {
+                core.error(`${e.stack}`);
+            }
         }
-        try {
-            core.info(`... Cleaning cargo/bin ...`);
-            await cleanBin(config.cargoBins);
-        }
-        catch (e) {
-            core.error(`${e.stack}`);
-        }
-        try {
-            core.info(`... Cleaning cargo git cache ...`);
-            await cleanGit(allPackages);
-        }
-        catch (e) {
-            core.error(`${e.stack}`);
+        if (core.getBooleanInput("clean-git")) {
+            try {
+                core.info(`... Cleaning cargo git cache ...`);
+                await cleanGit(allPackages);
+            }
+            catch (e) {
+                core.error(`${e.stack}`);
+            }
         }
         core.info(`... Saving cache ...`);
         // Pass a copy of cachePaths to avoid mutating the original array as reported by:
