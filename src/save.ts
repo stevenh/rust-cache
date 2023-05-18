@@ -1,9 +1,11 @@
 import * as cache from "@actions/cache";
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
+import * as fs from "fs";
+import path from "path";
 
-import { cleanBin, cleanGit, cleanRegistry, cleanTargetDir } from "./cleanup";
-import { CacheConfig, isCacheUpToDate } from "./config";
+import { cleanGit, cleanRegistry, cleanTargetDir } from "./cleanup";
+import { CacheConfig, isCacheUpToDate, CARGO_HOME } from "./config";
 
 process.on("uncaughtException", (e) => {
   core.error(e.message);
@@ -11,6 +13,8 @@ process.on("uncaughtException", (e) => {
     core.error(e.stack);
   }
 });
+
+const EXCLUDE_FILE = ".manifest-exclude.txt"
 
 async function run() {
   const save = core.getInput("save-if").toLowerCase() || "true";
@@ -52,12 +56,14 @@ async function run() {
       core.error(`${(e as any).stack}`);
     }
 
+    /*
     try {
       core.info(`... Cleaning cargo/bin ...`);
       await cleanBin(config.cargoBins);
     } catch (e) {
       core.error(`${(e as any).stack}`);
     }
+    */
 
     try {
       core.info(`... Cleaning cargo git cache ...`);
@@ -67,10 +73,27 @@ async function run() {
     }
 
     core.info(`... Saving cache ...`);
+    const cachePaths: string[] = [];
+    if (config.cargoBins.length != 0) {
+      // Exclude cargo bins from the cache.
+      const dir = path.join(CARGO_HOME, "bin");
+      const data = config
+        .cargoBins
+        .map((file) => path.join(dir, file))
+        .join("\n");
+      fs.writeFileSync(EXCLUDE_FILE, data);
+      cachePaths.push("--exclude-from="+EXCLUDE_FILE);
+    }
+
     // Pass a copy of cachePaths to avoid mutating the original array as reported by:
     // https://github.com/actions/toolkit/pull/1378
     // TODO: remove this once the underlying bug is fixed.
-    await cache.saveCache(config.cachePaths.slice(), config.cacheKey);
+    cachePaths.concat(config.cachePaths.slice());
+    await cache.saveCache(cachePaths, config.cacheKey);
+
+    if (fs.existsSync(EXCLUDE_FILE)) {
+      fs.unlinkSync(EXCLUDE_FILE);
+    }
   } catch (e) {
     core.error(`${(e as any).stack}`);
   }

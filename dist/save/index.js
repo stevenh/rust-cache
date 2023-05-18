@@ -59940,14 +59940,14 @@ var cache = __nccwpck_require__(7799);
 var core = __nccwpck_require__(2186);
 // EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
 var exec = __nccwpck_require__(1514);
-// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
-var io = __nccwpck_require__(7436);
 // EXTERNAL MODULE: external "fs"
 var external_fs_ = __nccwpck_require__(7147);
 var external_fs_default = /*#__PURE__*/__nccwpck_require__.n(external_fs_);
 // EXTERNAL MODULE: external "path"
 var external_path_ = __nccwpck_require__(1017);
 var external_path_default = /*#__PURE__*/__nccwpck_require__.n(external_path_);
+// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
+var io = __nccwpck_require__(7436);
 // EXTERNAL MODULE: ./node_modules/@actions/glob/lib/glob.js
 var glob = __nccwpck_require__(8090);
 // EXTERNAL MODULE: external "crypto"
@@ -60026,7 +60026,7 @@ class Workspace {
 
 
 const HOME = external_os_default().homedir();
-const CARGO_HOME = process.env.CARGO_HOME || external_path_default().join(HOME, ".cargo");
+const config_CARGO_HOME = process.env.CARGO_HOME || external_path_default().join(HOME, ".cargo");
 const STATE_CONFIG = "RUST_CACHE_CONFIG";
 class CacheConfig {
     constructor() {
@@ -60136,7 +60136,7 @@ class CacheConfig {
         self.keyFiles = keyFiles;
         key += `-${lockHash}`;
         self.cacheKey = key;
-        self.cachePaths = [CARGO_HOME];
+        self.cachePaths = [config_CARGO_HOME];
         const cacheTargets = core.getInput("cache-targets").toLowerCase() || "true";
         if (cacheTargets === "true") {
             self.cachePaths.push(...workspaces.map((ws) => ws.target));
@@ -60280,7 +60280,7 @@ async function cleanProfileTarget(profileDir, packages, checkTimestamp = false) 
 async function getCargoBins() {
     const bins = new Set();
     try {
-        const { installs } = JSON.parse(await external_fs_default().promises.readFile(external_path_default().join(CARGO_HOME, ".crates2.json"), "utf8"));
+        const { installs } = JSON.parse(await external_fs_default().promises.readFile(external_path_default().join(config_CARGO_HOME, ".crates2.json"), "utf8"));
         for (const pkg of Object.values(installs)) {
             for (const bin of pkg.bins) {
                 bins.add(bin);
@@ -60301,7 +60301,7 @@ async function cleanBin(oldBins) {
     for (const bin of oldBins) {
         bins.delete(bin);
     }
-    const dir = await external_fs_default().promises.opendir(external_path_default().join(CARGO_HOME, "bin"));
+    const dir = await fs.promises.opendir(path.join(CARGO_HOME, "bin"));
     for await (const dirent of dir) {
         if (dirent.isFile() && !bins.has(dirent.name)) {
             await rm(dir.path, dirent);
@@ -60311,9 +60311,9 @@ async function cleanBin(oldBins) {
 async function cleanRegistry(packages, crates = true) {
     // `.cargo/registry/src`
     // we can remove this completely, as cargo will recreate this from `cache`
-    await rmRF(external_path_default().join(CARGO_HOME, "registry", "src"));
+    await rmRF(external_path_default().join(config_CARGO_HOME, "registry", "src"));
     // `.cargo/registry/index`
-    const indexDir = await external_fs_default().promises.opendir(external_path_default().join(CARGO_HOME, "registry", "index"));
+    const indexDir = await external_fs_default().promises.opendir(external_path_default().join(config_CARGO_HOME, "registry", "index"));
     for await (const dirent of indexDir) {
         if (dirent.isDirectory()) {
             // eg `.cargo/registry/index/github.com-1ecc6299db9ec823`
@@ -60332,7 +60332,7 @@ async function cleanRegistry(packages, crates = true) {
     }
     const pkgSet = new Set(packages.map((p) => `${p.name}-${p.version}.crate`));
     // `.cargo/registry/cache`
-    const cacheDir = await external_fs_default().promises.opendir(external_path_default().join(CARGO_HOME, "registry", "cache"));
+    const cacheDir = await external_fs_default().promises.opendir(external_path_default().join(config_CARGO_HOME, "registry", "cache"));
     for await (const dirent of cacheDir) {
         if (dirent.isDirectory()) {
             // eg `.cargo/registry/cache/github.com-1ecc6299db9ec823`
@@ -60348,8 +60348,8 @@ async function cleanRegistry(packages, crates = true) {
     }
 }
 async function cleanGit(packages) {
-    const coPath = external_path_default().join(CARGO_HOME, "git", "checkouts");
-    const dbPath = external_path_default().join(CARGO_HOME, "git", "db");
+    const coPath = external_path_default().join(config_CARGO_HOME, "git", "checkouts");
+    const dbPath = external_path_default().join(config_CARGO_HOME, "git", "db");
     const repos = new Map();
     for (const p of packages) {
         if (!p.path.startsWith(coPath)) {
@@ -60465,12 +60465,15 @@ async function exists(path) {
 
 
 
+
+
 process.on("uncaughtException", (e) => {
     core.error(e.message);
     if (e.stack) {
         core.error(e.stack);
     }
 });
+const EXCLUDE_FILE = ".manifest-exclude.txt";
 async function run() {
     const save = core.getInput("save-if").toLowerCase() || "true";
     if (!(cache.isFeatureAvailable() && save === "true")) {
@@ -60506,13 +60509,14 @@ async function run() {
         catch (e) {
             core.error(`${e.stack}`);
         }
+        /*
         try {
-            core.info(`... Cleaning cargo/bin ...`);
-            await cleanBin(config.cargoBins);
+          core.info(`... Cleaning cargo/bin ...`);
+          await cleanBin(config.cargoBins);
+        } catch (e) {
+          core.error(`${(e as any).stack}`);
         }
-        catch (e) {
-            core.error(`${e.stack}`);
-        }
+        */
         try {
             core.info(`... Cleaning cargo git cache ...`);
             await cleanGit(allPackages);
@@ -60521,10 +60525,25 @@ async function run() {
             core.error(`${e.stack}`);
         }
         core.info(`... Saving cache ...`);
+        const cachePaths = [];
+        if (config.cargoBins.length != 0) {
+            // Exclude cargo bins from the cache.
+            const dir = external_path_default().join(config_CARGO_HOME, "bin");
+            const data = config
+                .cargoBins
+                .map((file) => external_path_default().join(dir, file))
+                .join("\n");
+            external_fs_.writeFileSync(EXCLUDE_FILE, data);
+            cachePaths.push("--exclude-from=" + EXCLUDE_FILE);
+        }
         // Pass a copy of cachePaths to avoid mutating the original array as reported by:
         // https://github.com/actions/toolkit/pull/1378
         // TODO: remove this once the underlying bug is fixed.
-        await cache.saveCache(config.cachePaths.slice(), config.cacheKey);
+        cachePaths.concat(config.cachePaths.slice());
+        await cache.saveCache(cachePaths, config.cacheKey);
+        if (external_fs_.existsSync(EXCLUDE_FILE)) {
+            external_fs_.unlinkSync(EXCLUDE_FILE);
+        }
     }
     catch (e) {
         core.error(`${e.stack}`);
